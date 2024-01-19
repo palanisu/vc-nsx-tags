@@ -1,0 +1,100 @@
+---
+  - name: NSX-T Connection check 
+    hosts: localhost
+    connection: local
+    gather_facts: false
+    vars:
+      report_path: "/home/palani/ansible/VC_NSXT_Tags/reports/"
+      report_file: nsx_vminfo_reports_{{ datetime }}.csv
+    
+    vars_prompt:
+      - name: nsx_mgr_srvr
+        prompt: "Enter the NSX-T Mgr. IP Details.."
+        private: false
+      
+      - name: nsx_mgr_user
+        prompt: "Enter the NSX-T Mgr. USER Details.."
+        private: false
+
+      - name: nsx_mgr_pswd
+        prompt: "Enter the NSX-T Mgr. PASSWORD Details.."
+        private: true
+        unsafe: true
+
+    tasks:
+      - name: Collect Transport Nodes
+        uri:
+          url: "https://{{nsx_mgr_srvr}}/api/v1/fabric/virtual-machines"
+          force_basic_auth: yes
+          validate_certs: no
+          headers:
+            Accept: "application/json"
+            Content-Type: "application/json"
+          user: "{{nsx_mgr_user}}"
+          password: "{{nsx_mgr_pswd}}"
+          method: GET
+          body_format: json
+        register: api_output
+      # - name: Debug the results
+      #   ansible.builtin.debug:
+      # #     msg: "{{ api_output.json.results | selectattr('resource_type','==','VirtualMachine') }}"
+
+      # - name: Collecting CSV files
+      #   debug:
+      #     msg: "{{ item.tags }}"
+      #   ignore_errors: true
+      #   with_items:
+      #     - "{{ api_output.json.results | selectattr('resource_type','==','VirtualMachine') | selectattr('type', '==', 'REGULAR') }}"
+      
+      - name: Filtering the required details and set variables
+        ansible.builtin.set_fact: 
+          nsx_vm_tags:  "{{ nsx_vm_tags |default([]) + [{ 'guest_name': item.guest_info.computer_name, 'instance_uuid': item.external_id, 'tags': item.tags | default() }] }}"
+        with_items:
+          - "{{ api_output.json.results | selectattr('resource_type','==','VirtualMachine') | selectattr('type', '==', 'REGULAR') }}"
+
+
+      - name: Generating Date and Time to add in report File 
+        ansible.builtin.set_fact: 
+          datetime="{{lookup('pipe','date +%Y%m%d_%H%M%Z')}}"
+        run_once: true
+
+      - name: Create CSV file and set the Header
+        ansible.builtin.lineinfile:
+          dest: "{{ report_path  }}/{{ report_file }}"
+          line: "GuestName,Guest_UUID,PCS_OARID,PCS_Environment"
+          create: yes
+          state: present
+
+      # - name: Preparing CSV file from NSX
+      #   ansible.builtin.include_tasks:
+      #     file: nsx_csv_creation_task.yml
+      #   with_items:
+      #     - "{{ nsx_vm_tags }}"
+      # - name: Collect the vm information in CSV File
+      #   ansible.builtin.lineinfile:
+      #     path: "{{ report_path  }}/{{ report_file }}"
+      #     insertafter: EOF
+      #     line: '"{{ item.guest_name }}","{{ item.instance_uuid }}","{{ item.tags | default() }}"'
+      #   with_items:
+      #     - "{{ nsx_vm_tags }}"
+
+      # - name: Adding data to CSV file
+      #   ansible.builtin.blockinfile:
+      #     block: "{{ lookup('ansible.builtin.template', './csv_jinja.j2') }}"
+      #     path: "{{ report_path  }}/{{ report_file }}"
+      #     insertafter: EOF
+      #     state: present
+        # loop:
+        #   - "{{ nsx_vm_tags }}"
+      - name: Collecting NSX VM and Tags into CSV File
+        template:
+          dest: "{{ report_path  }}/{{ report_file }}"
+          src: csv_jinja.j2
+        loop:
+          - "{{ nsx_vm_tags }}"
+
+      - name: Adding data in CSV file
+        ansible.builtin.lineinfile:
+          dest: "{{ report_path }}/{{ report_file }}"
+          state: absent
+          regex: '^\s*$'

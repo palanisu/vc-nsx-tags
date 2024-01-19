@@ -1,0 +1,119 @@
+---
+  - name: Collect VCenter VM Info in CSV format
+    hosts: localhost
+    connection: local
+    gather_facts: false
+    become: false
+    vars:
+      report_path: "/home/palani/ansible/VC_Tags/VC_NSXT_Tags/reports/"
+      vc_report_file: vc_vminfo_reports_{{ datetime }}.csv
+      nsx_report_file: nsx_vminfo_reports_{{ datetime }}.csv
+      vc_nsx_final_report: vc_nsx_tags_comparison_report_{{ datetime }}.csv
+
+    vars_prompt:
+      - name: vcenter_srvr
+        prompt: "Enter the VCenter IP Details.."
+        private: false
+      
+      - name: vcenter_user
+        prompt: "Enter the VCenter USER Details.."
+        private: false
+
+      - name: vcenter_pswd
+        prompt: "Enter the VCenter PASSWORD Details.."
+        private: true
+        unsafe: true
+
+      - name: nsx_mgr_srvr
+        prompt: "Enter the NSX-T Mgr. IP Details.."
+        private: false
+      
+      - name: nsx_mgr_user
+        prompt: "Enter the NSX-T Mgr. USER Details.."
+        private: false
+
+      - name: nsx_mgr_pswd
+        prompt: "Enter the NSX-T Mgr. PASSWORD Details.."
+        private: true
+        unsafe: true
+
+    tasks:
+      - name: Collecting all virtual machines information
+        community.vmware.vmware_vm_info:
+          hostname: '{{ vcenter_srvr }}'
+          username: '{{ vcenter_user }}'
+          password: '{{ vcenter_pswd }}'
+          #vm_name: CCA_Linux_Test_03
+          validate_certs: false
+          show_tag: true
+          show_attribute: true
+          folder: "/nl0x-tm1-dc01-mgmt/vm/Workload_Domain/DTAP_Test-VMs"
+        delegate_to: localhost
+        register: vc_vminfo
+      
+      - name: Filtering the required details and set variables for VCenter VM information
+        ansible.builtin.set_fact: 
+          vc_vm_tags:  "{{ vc_vm_tags |default([]) + [ { 'guest_name': item.guest_name, 'instance_uuid': item.instance_uuid, 'pcs_environment': item.attributes.pcs_environment | default(), 'pcs_oarid': item.attributes.pcs_oarid | default() }] }}"
+        with_items:
+          - "{{ vc_vminfo.virtual_machines }}"
+      
+      - name: Generating Date and Time to add in report File 
+        ansible.builtin.set_fact: 
+          datetime="{{lookup('pipe','date +%Y%m%d_%H%M%Z')}}"
+        run_once: true
+     
+      - name: Collecting VCenter VM and Tags into CSV File
+        ansible.builtin.lineinfile:
+          path: "{{ report_path  }}/{{ vc_report_file }}"
+          create: yes
+          state: present
+          line: '"{{ item.guest_name }}","{{ item.instance_uuid }}","{{ item.pcs_environment | default() }}","{{ item.pcs_oarid | default() }}"'
+        with_items:
+          - "{{ vc_vm_tags }}"
+
+      - name: Removing Empty lines in VCenter CSV file
+        ansible.builtin.lineinfile:
+          dest: "{{ report_path }}/{{ vc_report_file }}"
+          state: absent
+          regex: '^\s*$'
+
+      - name: Collecting VM information from NSX-T 
+        uri:
+          url: "https://{{nsx_mgr_srvr}}/api/v1/fabric/virtual-machines"
+          force_basic_auth: yes
+          validate_certs: no
+          headers:
+            Accept: "application/json"
+            Content-Type: "application/json"
+          user: "{{nsx_mgr_user}}"
+          password: "{{nsx_mgr_pswd}}"
+          method: GET
+          body_format: json
+        register: api_output
+
+      - name: Filtering the required details and set variables for NSX VM Info
+        ansible.builtin.set_fact: 
+          nsx_vm_tags:  "{{ nsx_vm_tags |default([]) + [{ 'guest_name': item.display_name, 'instance_uuid': item.external_id, 'tags': item.tags | default() }] }}"
+        with_items:
+          - "{{ api_output.json.results | selectattr('resource_type','==','VirtualMachine') | selectattr('type', '==', 'REGULAR') }}"
+
+      - name: Collecting NSX VM and Tags into CSV File
+        template:
+          dest: "{{ report_path  }}/{{ nsx_report_file }}"
+          src: csv_jinja.j2
+        loop:
+          - "{{ nsx_vm_tags }}"
+
+      - name: Removing Empty lines in NSX CSV file
+        ansible.builtin.lineinfile:
+          dest: "{{ report_path }}/{{ nsx_report_file }}"
+          state: absent
+          regex: '^\s*$'
+
+      - name: Comparing Both VCenter and NSX-T Manager Tags
+        ansible.builtin.script:
+          "new_csv_comparison.sh {{  vc_report_file }}  {{ nsx_report_file }} {{ vc_nsx_final_report }}"
+        args:
+          chdir: "{{ report_path }}"
+        delegate_to: localhost
+

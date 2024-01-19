@@ -1,0 +1,16 @@
+{% set ns = namespace(environment = "") %}
+{% set ns = namespace(oarid = "") %}
+{% for data in item %}
+{#{% set data = item %}#}
+{% set guest_name = data.guest_name %}
+{% set instance_uuid = data.instance_uuid %}
+{% set ns.oarid = "" %}
+{% for data_item in data.tags %}
+{% if data_item.scope == "pcs_environment" %}
+{% set ns.environment = data_item.tag %}
+{% elif data_item.scope == "pcs_oarid" %}
+{% set ns.oarid = ns.oarid + data_item.tag + "," %}
+{% endif %}
+{% endfor %}
+"{{ guest_name }}","{{ instance_uuid }}","{{ ns.environment }}","{{ ns.oarid | regex_replace(',$','') }}"
+{% endfor %}

@@ -1,0 +1,48 @@
+---
+  - name: VCenter Tags sync with NSX-T Manager VM's
+    hosts: localhost
+    connection: local
+    gather_facts: false
+    become: false
+    vars_files:
+      answerfile.yml
+    tasks:
+      - name: Gather all registered virtual machines
+        community.vmware.vmware_vm_info:
+          hostname: '{{ vcenter_srvr }}'
+          username: '{{ vcenter_user }}'
+          password: '{{ vcenter_pswd }}'
+          vm_name: CCA_Linux_Test_01
+          validate_certs: false
+          show_tag: true
+          show_attribute: true
+          #folder: "/nl0x-tm1-dc01-mgmt/vm/Workload_Domain/DTAP_Test-VMs"
+        delegate_to: localhost
+        register: vc_vminfo
+
+
+      - name: Filtering the required details and set variables
+        ansible.builtin.set_fact: 
+          vc_vm_tags:  "{{ vc_vm_tags |default([]) + [ { 'guest_name': item.guest_name, 'instance_uuid': item.instance_uuid, 'pcs_oarid': item.attributes.pcs_oarid | default(), 'pcs_environment': item.attributes.pcs_environment | default(), 'trust_colour': item.attributes['pcs_trust-colour'] | default() } ] }}"
+        with_items:
+          - "{{ vc_vminfo.virtual_machines }}"          
+
+
+      - name: Sync VM {{ item.guest_name }} tags in NSX-T
+        vmware.ansible_for_nsxt.nsxt_vm_tags:
+          hostname: "{{ nsx_mgr_srvr }}"
+          username: "{{ nsx_mgr_user }}"
+          password: "{{ nsx_mgr_pswd }}"
+          validate_certs: "no"
+          virtual_machine_id: "{{ item.instance_uuid }}"
+          add_tags:
+            - scope: pcs_environment
+              tag: "{{ item.pcs_environment }}"
+            - scope: pcs_oarid
+              tag: "{{ item.pcs_oarid }}"
+            - scope: trust_colour
+              tag: "{{ item.trust_colour }}"
+        ignore_errors: true
+
+        with_items:
+          - "{{ vc_vm_tags }}"

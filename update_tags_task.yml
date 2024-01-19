@@ -1,0 +1,20 @@
+---
+  - name: Preparing JSON file for Tags
+    template:
+      dest: nsx_data.json
+      src: template.j2    
+  - name: Update the vm {{ item.guest_name }} tags  to NSX-T Manager
+    ansible.builtin.uri:
+      url: "https://{{ nsx_mgr_srvr }}/api/v1/fabric/virtual-machines?action=update_tags"
+      user: "{{ nsx_mgr_user }}"
+      password: "{{ nsx_mgr_pswd }}"
+      force_basic_auth: true
+      validate_certs: false 
+      headers:
+        Accept: "application/json"
+        Content-Type: "application/json"
+      body_format: json
+      body: "{{ lookup('ansible.builtin.file','nsx_data.json') }}"
+      method: POST
+      status_code:
+        - 204

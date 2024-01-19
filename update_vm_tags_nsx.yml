@@ -1,0 +1,37 @@
+---
+  - name: Collect VCenter VM Info in CSV format
+    hosts: localhost
+    connection: local
+    gather_facts: false
+    become: false
+    vars_prompt:
+      - name: csv_file_name
+        prompt: "Enter the path to the CSV file (e.g., /path/to/data.csv):"
+        private: false
+      
+      - name: nsx_mgr_srvr
+        prompt: "Enter the NSX-T Manager IP Details.."
+        private: false
+      
+      - name: nsx_mgr_user
+        prompt: "Enter the NSX-T Manager USER Details.."
+        private: false
+
+      - name: nsx_mgr_pswd
+        prompt: "Enter the NSX-T Manager PASSWORD Details.."
+        private: true
+        unsafe: true
+    
+    tasks:
+      - name: Collecting data from CSV file
+        ansible.builtin.read_csv:
+          path: "{{ csv_file_name }}"
+        register: vm_tags_list
+        delegate_to: localhost     
+      
+      - name: Preparing JSON file for add Body Content and Update tags in NSX-T
+        ansible.builtin.include_tasks:
+          file: update_tags_task.yml
+          
+        with_items:
+          - "{{ vm_tags_list.list }}"

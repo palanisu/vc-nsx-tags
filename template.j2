@@ -1,0 +1,13 @@
+{% set data = item %}
+
+{
+  "external_id": "{{ data.Guest_UUID }}",
+  "tags": [
+    {"scope": "pcs_environment", "tag": "{{ data.PCS_Environment }}"},
+    {"scope": "pcs_trust-colour", "tag": "{{ data.PCS_TrustColour }}"},
+    {% for oarid in data.PCS_OARID.split(',') -%}
+    {"scope": "pcs_oarid", "tag": "{{ oarid }}"}{{"," if not loop.last }}
+    {% endfor %}
+    
+  ]
+}
