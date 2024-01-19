@@ -1,7 +1,7 @@
 ---
-  nsx_mgr_srvr: "10.134.0.131"
-  nsx_mgr_user: "admin"
-  nsx_mgr_pswd:  "eukk0Y7Ob8k!"
-  vcenter_srvr: "10.134.0.130"
-  vcenter_user: "administrator@vsphere.local"
-  vcenter_pswd: "KT9DTuXeCwF!"
+  nsx_mgr_srvr: ""
+  nsx_mgr_user: ""
+  nsx_mgr_pswd:  ""
+  vcenter_srvr: ""
+  vcenter_user: ""
+  vcenter_pswd: ""
